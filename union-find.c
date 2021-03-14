@@ -30,6 +30,13 @@ typedef struct {
     guchar bleu;
 } Pixel;
 
+/// Un Objet stocke donc un pointeur vers son pixel, son rang et un pointeur vers l'objet père.
+typedef struct SObjet {
+    Pixel *pixel; // adresse du pixel dans le pixbuf
+    int rang;
+    struct SObjet *pere;
+} Objet;
+
 
 //-----------------------------------------------------------------------------
 // Déclaration des fonctions
@@ -53,6 +60,17 @@ Pixel *gotoPixel(GdkPixbuf *pixbuf, int x, int y);
 void disk(GdkPixbuf *pixbuf, int r);
 
 gboolean seuiller(GtkWidget *widget, gpointer data);
+
+Objet *CreerEnsembles(GdkPixbuf *pixbuf);
+
+// Retourne le représentant de l'objet obj
+Objet *TrouverEnsemble(Objet *obj);
+
+// Si obj1 et obj2 n'ont pas les mêmes représentants, appelle Lier sur leurs représentants
+void Union(Objet *obj1, Objet *obj2);
+
+// Si obj1 et obj2 sont tous deux des racines, et sont distincts, alors réalise l'union des deux arbres.
+void Lier(Objet *obj1, Objet *obj2);
 
 
 //-----------------------------------------------------------------------------
@@ -282,6 +300,62 @@ void disk(GdkPixbuf *pixbuf, int r) {
             if (d2 >= r * r) setGreyLevel(pixel, 0);
             else setGreyLevel(pixel, 255 - (int) sqrt(d2));
             ++pixel; // sur une ligne, les pixels se suivent
+        }
+    }
+}
+
+Objet *CreerEnsembles(GdkPixbuf *pixbuf) {
+    int width = gdk_pixbuf_get_width(pixbuf);
+    int height = gdk_pixbuf_get_height(pixbuf);
+    Objet *res[width * height];
+
+    guchar *data = gdk_pixbuf_get_pixels(pixbuf); // Pointeur vers le tampon de données
+    int rowstride = gdk_pixbuf_get_rowstride(pixbuf); // Nombre d'octets entre chaque ligne dans le tampon de données
+
+    int i = 0;
+    for (int y = 0; y < height; ++y) {
+        Pixel *pixel = (Pixel *) data;
+        for (x = 0; x < width; ++x) {
+            Objet objet;
+            objet.pere = objet;
+            objet.pixel = pixel;
+            objet.rang = 0;
+            res[i] = &objet;
+
+            i++;
+            pixel++;
+        }
+        data += rowstride; // passe à la ligne suivante
+    }
+
+    return res;
+}
+
+int estRacine(Objet *obj) {
+    return obj->pere == obj;
+}
+
+// Retourne le représentant de l'objet obj
+Objet *TrouverEnsemble(Objet *obj) {
+    Objet *res = obj;
+    while (!estRacine(res))
+        res = res->pere;
+
+    return res;
+}
+
+// Si obj1 et obj2 n'ont pas les mêmes représentants, appelle Lier sur leurs représentants
+void Union(Objet *obj1, Objet *obj2) {
+    if (TrouverEnsemble(obj1) != TrouverEnsemble(obj2)) {
+        Lier(TrouverEnsemble(obj1), TrouverEnsemble(obj2));
+    }
+}
+
+// Si obj1 et obj2 sont tous deux des racines, et sont distincts, alors réalise l'union des deux arbres.
+void Lier(Objet *obj1, Objet *obj2) {
+    if (estRacine(obj1) && estRacine(obj2)) {
+        if (obj1 != obj2) {
+            obj2->pere = obj1;
         }
     }
 }
