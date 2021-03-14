@@ -2,3 +2,4 @@
 union-find
 union-find.o
 *.png
+cmake-build-debug
