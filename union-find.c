@@ -2,6 +2,7 @@
 #include <math.h>
 #include <assert.h>
 #include <gtk/gtk.h>
+#include <stdio.h>
 
 //-----------------------------------------------------------------------------
 // Déclaration des types
@@ -16,6 +17,7 @@ typedef struct SContexte {
     GdkPixbuf *pixbuf_input;
     GdkPixbuf *pixbuf_output;
     GtkWidget *image;
+    GtkWidget *seuil_widget;
 } Contexte;
 
 /**
@@ -49,6 +51,8 @@ void setGreyLevel(Pixel *data, unsigned char g);
 Pixel *gotoPixel(GdkPixbuf *pixbuf, int x, int y);
 
 void disk(GdkPixbuf *pixbuf, int r);
+
+gboolean seuiller(GtkWidget *widget, gpointer data);
 
 
 //-----------------------------------------------------------------------------
@@ -93,12 +97,45 @@ gboolean selectOutput(GtkWidget *widget, gpointer data) {
     return TRUE;
 }
 
+/// Fonction appelée lorsque l'on clique sur seuiller
+gboolean seuiller(GtkWidget *widget, gpointer data) {
+    // Récupérer le contexte.
+    Contexte *pCtxt = (Contexte *) data;
+    guchar *dIn = gdk_pixbuf_get_pixels(pCtxt->pixbuf_input);
+    guchar *dOut = gdk_pixbuf_get_pixels(pCtxt->pixbuf_output);
+    int rowstride = gdk_pixbuf_get_rowstride(pCtxt->pixbuf_input);
+    int t = gtk_range_get_value((GtkRange *) pCtxt->seuil_widget);
+
+    for (int y = 0; y < pCtxt->height; ++y) {
+        Pixel *pixel = (Pixel *) dIn;
+        Pixel *pixel2 = (Pixel *) dOut;
+        for (int x = 0; x < pCtxt->width; ++x) {
+            if (greyLevel(pixel) < t)
+                setGreyLevel(pixel2, 0);
+            else
+                setGreyLevel(pixel2, 255);
+            ++pixel;
+            ++pixel2;
+        }
+        dIn += rowstride; // passe à la ligne suivante
+        dOut += rowstride; // passe à la ligne suivante
+    }
+
+    // Place le pixbuf à visualiser dans le bon widget.
+    gtk_image_set_from_pixbuf(GTK_IMAGE(pCtxt->image), pCtxt->pixbuf_output);
+    // Force le réaffichage du widget.
+    gtk_widget_queue_draw(pCtxt->image);
+
+    return TRUE;
+}
+
 /// Charge l'image donnée et crée l'interface.
 GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
     GtkWidget *window;
     GtkWidget *vbox1;
     GtkWidget *vbox2;
     GtkWidget *hbox1;
+    GtkWidget *button_seuiller;
     GtkWidget *button_quit;
     GtkWidget *button_select_input;
     GtkWidget *button_select_output;
@@ -142,8 +179,18 @@ GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
     g_signal_connect(button_quit, "clicked",
                      G_CALLBACK(gtk_main_quit),
                      NULL);
+    // Crée le gtk scale
+    pCtxt->seuil_widget = gtk_hscale_new_with_range(0, 255, 1);
+    // Crée le bouton seuiller
+    button_seuiller = gtk_button_new_with_label("Seuiller");
+    //Connecte la réaction gtk_main_seuiller à l'événement "clic" sur ce bouton.
+    g_signal_connect(button_seuiller, "clicked",
+                     G_CALLBACK(seuiller),
+                     pCtxt);
     // Rajoute tout dans le conteneur vbox.
     gtk_container_add(GTK_CONTAINER(vbox1), hbox1);
+    gtk_container_add(GTK_CONTAINER(vbox1), pCtxt->seuil_widget);
+    gtk_container_add(GTK_CONTAINER(vbox1), button_seuiller);
     gtk_container_add(GTK_CONTAINER(vbox1), button_quit);
     // Rajoute la vbox  dans le conteneur window.
     gtk_container_add(GTK_CONTAINER(window), vbox1);
