@@ -2,4 +2,8 @@
 union-find
 union-find.o
 *.png
+*.jpg
+*.gif
+*.pgm
+*.fig
 cmake-build-debug
