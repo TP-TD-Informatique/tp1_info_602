@@ -1,14 +1,13 @@
 SRC=union-find.c
 CC=gcc
 LD=gcc
-# CFLAGS=-g -Wall -Werror -pedantic -std=c99
-CFLAGS=-g -Wall -pedantic -std=c99
+CFLAGS=-g -Wall -pedantic -std=c99 -D_POSIX_C_SOURCE=199309
 LIBS=-lm
 # Choisissez si vous préférez GTK2 ou GTK3
 # gtk+-2.0 pour GTK2 (choisi ici)
 # gtk+-3.0 pour GTK3
 GTKCFLAGS:=-g $(shell pkg-config --cflags gtk+-2.0)
-GTKLIBS:=$(shell pkg-config --libs gtk+-2.0)
+GTKLIBS:=$(shell pkg-config --libs gtk+-2.0) -lrt
 
 all: union-find
 

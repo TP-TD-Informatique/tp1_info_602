@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <gtk/gtk.h>
 #include <stdio.h>
+#include <time.h>
 
 //-----------------------------------------------------------------------------
 // Déclaration des types
@@ -156,6 +157,9 @@ gboolean seuiller(GtkWidget *widget, gpointer data) {
 }
 
 gboolean composantesConnexes(GtkWidget *widget, gpointer data) {
+    struct timespec myTimerStart;
+    clock_gettime(CLOCK_REALTIME, &myTimerStart);
+
     // Récupérer le contexte.
     Contexte *pCtxt = (Contexte *) data;
     int width = pCtxt->width;
@@ -193,8 +197,25 @@ gboolean composantesConnexes(GtkWidget *widget, gpointer data) {
     // Force le réaffichage du widget.
     gtk_widget_queue_draw(pCtxt->image);
 
+    struct timespec current;
+    clock_gettime(CLOCK_REALTIME, &current);
+    double t = ((current.tv_sec - myTimerStart.tv_sec) * 1000 + (current.tv_nsec - myTimerStart.tv_nsec) / 1000000.0);
+    printf("time = %lf ms.\n", t);
+
     return TRUE;
 }
+
+/**
+ * Tableau des temps
+ * * --------------------------------------------------------------------- *
+ * | Image            | Taille   | Temps 1   | Temps 2 | Temps 3 | Temps 4 |
+ * * --------------------------------------------------------------------- *
+ * | papillon-express | 605x418  | 26737ms   | 37ms    | 29ms    | 64ms    |
+ * | edt              | 557x591  | 35061ms   | 39ms    | 37ms    | 37ms    |
+ * | lena             | 256x256  | 1082ms    | 33ms    | 7ms     | 11ms    |
+ * | kowloon-1000     | 1000x655 | 42129ms   | 122ms   | 90ms    | 107ms   |
+ * * --------------------------------------------------------------------- *
+ */
 
 /// Charge l'image donnée et crée l'interface.
 GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
@@ -394,25 +415,31 @@ int estRacine(Objet *obj) {
 
 // Retourne le représentant de l'objet obj
 Objet *TrouverEnsemble(Objet *obj) {
-    Objet *res = obj;
-    while (!estRacine(res))
-        res = res->pere;
+    if (!estRacine(obj))
+        obj->pere = TrouverEnsemble(obj->pere);
 
-    return res;
+    return obj->pere;
 }
 
 // Si obj1 et obj2 n'ont pas les mêmes représentants, appelle Lier sur leurs représentants
 void Union(Objet *obj1, Objet *obj2) {
-    if (TrouverEnsemble(obj1) != TrouverEnsemble(obj2)) {
-        Lier(TrouverEnsemble(obj1), TrouverEnsemble(obj2));
+    Objet *racine1 = TrouverEnsemble(obj1);
+    Objet *racine2 = TrouverEnsemble(obj2);
+    if (racine1 != racine2) {
+        if (racine1->rang < racine2->rang)
+            Lier(racine1, racine2);
+        else {
+            Lier(racine2, racine1);
+            if (racine1->rang == racine2->rang) {
+                racine1->rang++;
+            }
+        }
     }
 }
 
 // Si obj1 et obj2 sont tous deux des racines, et sont distincts, alors réalise l'union des deux arbres.
 void Lier(Objet *obj1, Objet *obj2) {
-    if (estRacine(obj1) && estRacine(obj2)) {
-        if (obj1 != obj2) {
-            obj2->pere = obj1;
-        }
-    }
+    if (estRacine(obj1) && estRacine(obj2))
+        if (obj1 != obj2)
+            obj1->pere = obj2;
 }
