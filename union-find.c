@@ -61,7 +61,11 @@ void disk(GdkPixbuf *pixbuf, int r);
 
 gboolean seuiller(GtkWidget *widget, gpointer data);
 
-Objet *CreerEnsembles(GdkPixbuf *pixbuf);
+gboolean composantesConnexes(GtkWidget *widget, gpointer data);
+
+int estRacine(Objet *obj);
+
+Objet **CreerEnsembles(GdkPixbuf *pixbuf);
 
 // Retourne le représentant de l'objet obj
 Objet *TrouverEnsemble(Objet *obj);
@@ -78,6 +82,10 @@ void Lier(Objet *obj1, Objet *obj2);
 //-----------------------------------------------------------------------------
 int main(int argc,
          char *argv[]) {
+    // Initialisation de rand
+    time_t t;
+    srand((unsigned) time(&t));
+
     Contexte context;
     const char *image_filename = argc > 1 ? argv[1] : "lena.png";
 
@@ -147,6 +155,47 @@ gboolean seuiller(GtkWidget *widget, gpointer data) {
     return TRUE;
 }
 
+gboolean composantesConnexes(GtkWidget *widget, gpointer data) {
+    // Récupérer le contexte.
+    Contexte *pCtxt = (Contexte *) data;
+    int width = pCtxt->width;
+    int height = pCtxt->height;
+    Objet **objets = CreerEnsembles(pCtxt->pixbuf_output);
+
+    // Parcours horizontal
+    for (int i = 0; i < (width * height) - 1; i++) {
+        if (greyLevel(objets[i]->pixel) == greyLevel(objets[i + 1]->pixel))
+            Union(objets[i], objets[i + 1]);
+    }
+
+    // Parcours vertical
+    for (int i = 0; i < (width * (height - 1)) - 1; i++) {
+        if (greyLevel(objets[i]->pixel) == greyLevel(objets[i + width]->pixel))
+            Union(objets[i], objets[i + width]);
+    }
+
+    for (int i = 0; i < (width * height); i++) {
+        if (estRacine(objets[i])) {
+            objets[i]->pixel->rouge = rand() % 256;
+            objets[i]->pixel->vert = rand() % 256;
+            objets[i]->pixel->bleu = rand() % 256;
+        }
+    }
+
+    for (int i = 0; i < (width * height); i++) {
+        objets[i]->pixel->rouge = TrouverEnsemble(objets[i])->pixel->rouge;
+        objets[i]->pixel->vert = TrouverEnsemble(objets[i])->pixel->vert;
+        objets[i]->pixel->bleu = TrouverEnsemble(objets[i])->pixel->bleu;
+    }
+
+    // Place le pixbuf à visualiser dans le bon widget.
+    gtk_image_set_from_pixbuf(GTK_IMAGE(pCtxt->image), pCtxt->pixbuf_output);
+    // Force le réaffichage du widget.
+    gtk_widget_queue_draw(pCtxt->image);
+
+    return TRUE;
+}
+
 /// Charge l'image donnée et crée l'interface.
 GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
     GtkWidget *window;
@@ -154,6 +203,7 @@ GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
     GtkWidget *vbox2;
     GtkWidget *hbox1;
     GtkWidget *button_seuiller;
+    GtkWidget *button_composantes;
     GtkWidget *button_quit;
     GtkWidget *button_select_input;
     GtkWidget *button_select_output;
@@ -201,14 +251,21 @@ GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
     pCtxt->seuil_widget = gtk_hscale_new_with_range(0, 255, 1);
     // Crée le bouton seuiller
     button_seuiller = gtk_button_new_with_label("Seuiller");
-    //Connecte la réaction gtk_main_seuiller à l'événement "clic" sur ce bouton.
+    // Connecte la réaction seuiller à l'événement "clic" sur ce bouton.
     g_signal_connect(button_seuiller, "clicked",
                      G_CALLBACK(seuiller),
+                     pCtxt);
+    // Crée le bouton composantes
+    button_composantes = gtk_button_new_with_label("Composantes connexes");
+    // Connecte la réaction ComposantesConnexes à l'événement "clic" sur ce bouton.
+    g_signal_connect(button_composantes, "clicked",
+                     G_CALLBACK(composantesConnexes),
                      pCtxt);
     // Rajoute tout dans le conteneur vbox.
     gtk_container_add(GTK_CONTAINER(vbox1), hbox1);
     gtk_container_add(GTK_CONTAINER(vbox1), pCtxt->seuil_widget);
     gtk_container_add(GTK_CONTAINER(vbox1), button_seuiller);
+    gtk_container_add(GTK_CONTAINER(vbox1), button_composantes);
     gtk_container_add(GTK_CONTAINER(vbox1), button_quit);
     // Rajoute la vbox  dans le conteneur window.
     gtk_container_add(GTK_CONTAINER(window), vbox1);
@@ -304,10 +361,10 @@ void disk(GdkPixbuf *pixbuf, int r) {
     }
 }
 
-Objet *CreerEnsembles(GdkPixbuf *pixbuf) {
+Objet **CreerEnsembles(GdkPixbuf *pixbuf) {
     int width = gdk_pixbuf_get_width(pixbuf);
     int height = gdk_pixbuf_get_height(pixbuf);
-    Objet *res[width * height];
+    Objet **res = malloc(sizeof(Objet) * (width * height));
 
     guchar *data = gdk_pixbuf_get_pixels(pixbuf); // Pointeur vers le tampon de données
     int rowstride = gdk_pixbuf_get_rowstride(pixbuf); // Nombre d'octets entre chaque ligne dans le tampon de données
@@ -315,12 +372,12 @@ Objet *CreerEnsembles(GdkPixbuf *pixbuf) {
     int i = 0;
     for (int y = 0; y < height; ++y) {
         Pixel *pixel = (Pixel *) data;
-        for (x = 0; x < width; ++x) {
-            Objet objet;
-            objet.pere = objet;
-            objet.pixel = pixel;
-            objet.rang = 0;
-            res[i] = &objet;
+        for (int x = 0; x < width; ++x) {
+            Objet *objet = malloc(sizeof(Objet));
+            objet->pere = objet;
+            objet->pixel = pixel;
+            objet->rang = 0;
+            res[i] = objet;
 
             i++;
             pixel++;
