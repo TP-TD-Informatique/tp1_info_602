@@ -215,6 +215,8 @@ gboolean composantesConnexes(GtkWidget *widget, gpointer data) {
  * | lena             | 256x256  | 1082ms    | 33ms    | 7ms     | 11ms    |
  * | kowloon-1000     | 1000x655 | 42129ms   | 122ms   | 90ms    | 107ms   |
  * * --------------------------------------------------------------------- *
+ * Entre l'algo 'bête' et la première heuristique, le temps est déjà divisé par 100
+ * Puis en rajoutant le deuxième heuristique on trouve un temps quasi linéaire par rapport à la taille de l'image
  */
 
 /// Charge l'image donnée et crée l'interface.
