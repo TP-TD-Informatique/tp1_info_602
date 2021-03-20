@@ -24,6 +24,7 @@ typedef struct SContexte {
     GdkPixbuf *pixbuf_output;
     GtkWidget *image;
     GtkWidget *seuil_widget;
+    GtkWidget *floue_widget;
 } Contexte;
 
 /**
@@ -50,9 +51,20 @@ typedef struct {
     int nb;
 } StatCouleur;
 
+typedef struct {
+    int t;    // teinte comme angle en degrés
+    double s; // saturation comme nombre entre 0 et 1
+    double v; // valeur ou brillance comme nombre entre 0 et 1
+} TSVCouleur;
+
+
 //-----------------------------------------------------------------------------
 // Déclaration des fonctions
 //-----------------------------------------------------------------------------
+double similitude(Pixel *p1, Pixel *p2);
+
+TSVCouleur tsv(Pixel *pixel);
+
 gboolean selectInput(GtkWidget *widget, gpointer data);
 
 gboolean selectOutput(GtkWidget *widget, gpointer data);
@@ -76,6 +88,8 @@ gboolean seuiller(GtkWidget *widget, gpointer data);
 gboolean composantesConnexes(GtkWidget *widget, gpointer data);
 
 gboolean composantesConnexesMoy(GtkWidget *widget, gpointer data);
+
+gboolean composantesConnexesFloues(GtkWidget *widget, gpointer data);
 
 int estRacine(Objet *obj);
 
@@ -112,6 +126,49 @@ int main(int argc,
     /* Rentre dans la boucle d'événements. */
     gtk_main();
     return 0;
+}
+
+double similitude(Pixel *p1, Pixel *p2) {
+    TSVCouleur tsv1 = tsv(p1);
+    TSVCouleur tsv2 = tsv(p2);
+    int diff = tsv1.t - tsv2.t;
+    while (diff >= 180) diff -= 360;
+    while (diff <= -180) diff += 360;
+    return abs((double) diff) + 5.0 * abs(tsv1.s - tsv2.s) + 10.0 * abs(tsv1.v - tsv2.v);
+}
+
+int max(int a, int b) {
+    return a > b ? a : b;
+}
+
+int min(int a, int b) {
+    return a < b ? a : b;
+}
+
+TSVCouleur tsv(Pixel *pixel) {
+    TSVCouleur res;
+    int maxi = max(pixel->rouge, max(pixel->vert, pixel->bleu));
+    int mini = min(pixel->rouge, min(pixel->vert, pixel->bleu));
+    // T
+    if (maxi == mini) {
+        res.t = 0;
+    } else if (maxi == pixel->rouge) {
+        res.t = (60 * ((pixel->vert - pixel->bleu) / (maxi - mini)) + 360) % 360;
+    } else if (maxi == pixel->vert) {
+        res.t = 60 * ((pixel->bleu - pixel->rouge) / (maxi - mini)) + 120;
+    } else if (maxi == pixel->bleu) { // else
+        res.t = 60 * ((pixel->rouge - pixel->vert) / (maxi - mini)) + 240;
+    }
+    // S
+    if (maxi == 0) {
+        res.s = 0;
+    } else {
+        res.s = 1 - (mini / maxi);
+    }
+    // V
+    res.v = maxi;
+
+    return res;
 }
 
 
@@ -308,6 +365,111 @@ gboolean composantesConnexesMoy(GtkWidget *widget, gpointer data) {
     return TRUE;
 }
 
+void copieInputToOutput(Contexte *contexte) {
+    // Récupérer le contexte.
+    guchar *dIn = gdk_pixbuf_get_pixels(contexte->pixbuf_input);
+    guchar *dOut = gdk_pixbuf_get_pixels(contexte->pixbuf_output);
+    int rowstride = gdk_pixbuf_get_rowstride(contexte->pixbuf_input);
+
+    for (int y = 0; y < contexte->height; ++y) {
+        Pixel *pixel = (Pixel *) dIn;
+        Pixel *pixel2 = (Pixel *) dOut;
+        for (int x = 0; x < contexte->width; ++x) {
+            pixel2->rouge = pixel->rouge;
+            pixel2->vert = pixel->vert;
+            pixel2->bleu = pixel->bleu;
+
+            ++pixel;
+            ++pixel2;
+        }
+        dIn += rowstride; // passe à la ligne suivante
+        dOut += rowstride; // passe à la ligne suivante
+    }
+
+    // Place le pixbuf à visualiser dans le bon widget.
+    gtk_image_set_from_pixbuf(GTK_IMAGE(contexte->image), contexte->pixbuf_output);
+    // Force le réaffichage du widget.
+    gtk_widget_queue_draw(contexte->image);
+}
+
+gboolean composantesConnexesFloues(GtkWidget *widget, gpointer data) {
+    struct timespec myTimerStart;
+    clock_gettime(CLOCK_REALTIME, &myTimerStart);
+
+    // Récupérer le contexte.
+    Contexte *pCtxt = (Contexte *) data;
+    copieInputToOutput(pCtxt);
+    int width = pCtxt->width;
+    int height = pCtxt->height;
+    Objet *objets = CreerEnsembles(pCtxt->pixbuf_output);
+    int seuil = gtk_range_get_value((GtkRange *) pCtxt->floue_widget);
+
+    // Parcours horizontal
+    for (int i = 0; i < (width * height) - 1; i++) {
+        if (similitude(objets[i].pixel, objets[i + 1].pixel) <= seuil)
+            Union(&objets[i], &objets[i + 1]);
+    }
+
+    // Parcours vertical
+    for (int i = 0; i < (width * (height - 1)) - 1; i++) {
+        if (similitude(objets[i].pixel, objets[i + width].pixel) <= seuil)
+            Union(&objets[i], &objets[i + width]);
+    }
+
+    int size = width * height;
+    StatCouleur *stats = (StatCouleur *) malloc(size * sizeof(StatCouleur));
+
+    for (int i = 0; i < (width * height); i++) {
+        if (estRacine(&objets[i])) {
+            stats[i].rouge = 0;
+            stats[i].vert = 0;
+            stats[i].bleu = 0;
+        }
+    }
+
+    guchar *data_input = gdk_pixbuf_get_pixels(pCtxt->pixbuf_input);
+    guchar *data_output = gdk_pixbuf_get_pixels(pCtxt->pixbuf_output);
+    for (int i = 0; i < size; i++) {
+        Objet *rep = TrouverEnsemble(&objets[i]);
+        long int j = (rep - objets);
+        Pixel *pixel_src = (Pixel *) (data_input + ((guchar *) objets[i].pixel - data_output));
+        // pixel_src est la couleur de ce pixel dans l'image input.
+        // On l'ajoute à la stat du représentant j.
+        if (j >= 0 && j < size) {
+            stats[j].rouge += pixel_src->rouge;
+            stats[j].vert += pixel_src->vert;
+            stats[j].bleu += pixel_src->bleu;
+            stats[j].nb += 1; // On aura donc la somme cumulée
+        }
+    }
+
+    for (int i = 0; i < size; i++) {
+        if (estRacine(&objets[i])) {
+            objets[i].pixel->rouge = stats[i].rouge / stats[i].nb;
+            objets[i].pixel->vert = stats[i].vert / stats[i].nb;
+            objets[i].pixel->bleu = stats[i].bleu / stats[i].nb;
+        }
+    }
+
+    for (int i = 0; i < (width * height); i++) {
+        objets[i].pixel->rouge = TrouverEnsemble(&objets[i])->pixel->rouge;
+        objets[i].pixel->vert = TrouverEnsemble(&objets[i])->pixel->vert;
+        objets[i].pixel->bleu = TrouverEnsemble(&objets[i])->pixel->bleu;
+    }
+
+    // Place le pixbuf à visualiser dans le bon widget.
+    gtk_image_set_from_pixbuf(GTK_IMAGE(pCtxt->image), pCtxt->pixbuf_output);
+    // Force le réaffichage du widget.
+    gtk_widget_queue_draw(pCtxt->image);
+
+    struct timespec current;
+    clock_gettime(CLOCK_REALTIME, &current);
+    double t = ((current.tv_sec - myTimerStart.tv_sec) * 1000 + (current.tv_nsec - myTimerStart.tv_nsec) / 1000000.0);
+    printf("time = %lf ms.\n", t);
+
+    return TRUE;
+}
+
 /// Charge l'image donnée et crée l'interface.
 GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
     GtkWidget *window;
@@ -317,6 +479,7 @@ GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
     GtkWidget *button_seuiller;
     GtkWidget *button_composantes;
     GtkWidget *button_composantes_moy;
+    GtkWidget *button_composantes_floue;
     GtkWidget *button_quit;
     GtkWidget *button_select_input;
     GtkWidget *button_select_output;
@@ -376,9 +539,17 @@ GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
                      pCtxt);
     // Crée le bouton composantes moyennes
     button_composantes_moy = gtk_button_new_with_label("Composantes connexes (Couleur moyenne)");
-    // Connecte la réaction ComposantesConnexes à l'événement "clic" sur ce bouton.
+    // Connecte la réaction ComposantesConnexesMoy à l'événement "clic" sur ce bouton.
     g_signal_connect(button_composantes_moy, "clicked",
                      G_CALLBACK(composantesConnexesMoy),
+                     pCtxt);
+    // Crée le gtk scale
+    pCtxt->floue_widget = gtk_hscale_new_with_range(0, 255, 1);
+    // Crée le bouton composantes floues
+    button_composantes_floue = gtk_button_new_with_label("Composantes connexes floues (Couleur moyenne)");
+    // Connecte la réaction ComposantesConnexesFloues à l'événement "clic" sur ce bouton
+    g_signal_connect(button_composantes_floue, "clicked",
+                     G_CALLBACK(composantesConnexesFloues),
                      pCtxt);
     // Rajoute tout dans le conteneur vbox.
     gtk_container_add(GTK_CONTAINER(vbox1), hbox1);
@@ -386,6 +557,8 @@ GtkWidget *creerIHM(const char *image_filename, Contexte *pCtxt) {
     gtk_container_add(GTK_CONTAINER(vbox1), button_seuiller);
     gtk_container_add(GTK_CONTAINER(vbox1), button_composantes);
     gtk_container_add(GTK_CONTAINER(vbox1), button_composantes_moy);
+    gtk_container_add(GTK_CONTAINER(vbox1), pCtxt->floue_widget);
+    gtk_container_add(GTK_CONTAINER(vbox1), button_composantes_floue);
     gtk_container_add(GTK_CONTAINER(vbox1), button_quit);
     // Rajoute la vbox  dans le conteneur window.
     gtk_container_add(GTK_CONTAINER(window), vbox1);
