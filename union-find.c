@@ -79,7 +79,7 @@ gboolean composantesConnexesMoy(GtkWidget *widget, gpointer data);
 
 int estRacine(Objet *obj);
 
-Objet **CreerEnsembles(GdkPixbuf *pixbuf);
+Objet *CreerEnsembles(GdkPixbuf *pixbuf);
 
 // Retourne le représentant de l'objet obj
 Objet *TrouverEnsemble(Objet *obj);
@@ -177,32 +177,32 @@ gboolean composantesConnexes(GtkWidget *widget, gpointer data) {
     Contexte *pCtxt = (Contexte *) data;
     int width = pCtxt->width;
     int height = pCtxt->height;
-    Objet **objets = CreerEnsembles(pCtxt->pixbuf_output);
+    Objet *objets = CreerEnsembles(pCtxt->pixbuf_output);
 
     // Parcours horizontal
     for (int i = 0; i < (width * height) - 1; i++) {
-        if (greyLevel(objets[i]->pixel) == greyLevel(objets[i + 1]->pixel))
-            Union(objets[i], objets[i + 1]);
+        if (greyLevel(objets[i].pixel) == greyLevel(objets[i + 1].pixel))
+            Union(&objets[i], &objets[i + 1]);
     }
 
     // Parcours vertical
     for (int i = 0; i < (width * (height - 1)) - 1; i++) {
-        if (greyLevel(objets[i]->pixel) == greyLevel(objets[i + width]->pixel))
-            Union(objets[i], objets[i + width]);
+        if (greyLevel(objets[i].pixel) == greyLevel(objets[i + width].pixel))
+            Union(&objets[i], &objets[i + width]);
     }
 
     for (int i = 0; i < (width * height); i++) {
-        if (estRacine(objets[i])) {
-            objets[i]->pixel->rouge = rand() % 256;
-            objets[i]->pixel->vert = rand() % 256;
-            objets[i]->pixel->bleu = rand() % 256;
+        if (estRacine(&objets[i])) {
+            objets[i].pixel->rouge = rand() % 256;
+            objets[i].pixel->vert = rand() % 256;
+            objets[i].pixel->bleu = rand() % 256;
         }
     }
 
     for (int i = 0; i < (width * height); i++) {
-        objets[i]->pixel->rouge = TrouverEnsemble(objets[i])->pixel->rouge;
-        objets[i]->pixel->vert = TrouverEnsemble(objets[i])->pixel->vert;
-        objets[i]->pixel->bleu = TrouverEnsemble(objets[i])->pixel->bleu;
+        objets[i].pixel->rouge = TrouverEnsemble(&objets[i])->pixel->rouge;
+        objets[i].pixel->vert = TrouverEnsemble(&objets[i])->pixel->vert;
+        objets[i].pixel->bleu = TrouverEnsemble(&objets[i])->pixel->bleu;
     }
 
     // Place le pixbuf à visualiser dans le bon widget.
@@ -240,43 +240,37 @@ gboolean composantesConnexesMoy(GtkWidget *widget, gpointer data) {
     Contexte *pCtxt = (Contexte *) data;
     int width = pCtxt->width;
     int height = pCtxt->height;
-    Objet **objets = CreerEnsembles(pCtxt->pixbuf_output);
+    Objet *objets = CreerEnsembles(pCtxt->pixbuf_output);
 
     // Parcours horizontal
     for (int i = 0; i < (width * height) - 1; i++) {
-        if (greyLevel(objets[i]->pixel) == greyLevel(objets[i + 1]->pixel))
-            Union(objets[i], objets[i + 1]);
+        if (greyLevel(objets[i].pixel) == greyLevel(objets[i + 1].pixel))
+            Union(&objets[i], &objets[i + 1]);
     }
 
     // Parcours vertical
     for (int i = 0; i < (width * (height - 1)) - 1; i++) {
-        if (greyLevel(objets[i]->pixel) == greyLevel(objets[i + width]->pixel))
-            Union(objets[i], objets[i + width]);
+        if (greyLevel(objets[i].pixel) == greyLevel(objets[i + width].pixel))
+            Union(&objets[i], &objets[i + width]);
     }
 
     int size = width * height;
     StatCouleur *stats = (StatCouleur *) malloc(size * sizeof(StatCouleur));
 
     for (int i = 0; i < (width * height); i++) {
-        if (estRacine(objets[i])) {
+        if (estRacine(&objets[i])) {
             stats[i].rouge = 0;
             stats[i].vert = 0;
             stats[i].bleu = 0;
         }
     }
 
-    /*
-    for (int i = 0; i < size; ++i) {
-        printf("%p\n", objets[i]);
-    }
-    */
-
     guchar *data_input = gdk_pixbuf_get_pixels(pCtxt->pixbuf_input);
     guchar *data_output = gdk_pixbuf_get_pixels(pCtxt->pixbuf_output);
     for (int i = 0; i < size; i++) {
-        Objet *rep = TrouverEnsemble(objets[i]);
-        long int j = (rep - objets[0]);
-        Pixel *pixel_src = (Pixel *) (data_input + ((guchar *) objets[i]->pixel - data_output));
+        Objet *rep = TrouverEnsemble(&objets[i]);
+        long int j = (rep - objets);
+        Pixel *pixel_src = (Pixel *) (data_input + ((guchar *) objets[i].pixel - data_output));
         // pixel_src est la couleur de ce pixel dans l'image input.
         // On l'ajoute à la stat du représentant j.
         if (j >= 0 && j < size) {
@@ -288,17 +282,17 @@ gboolean composantesConnexesMoy(GtkWidget *widget, gpointer data) {
     }
 
     for (int i = 0; i < size; i++) {
-        if (estRacine(objets[i])) {
-            objets[i]->pixel->rouge = stats[i].rouge / stats[i].nb;
-            objets[i]->pixel->vert = stats[i].vert / stats[i].nb;
-            objets[i]->pixel->bleu = stats[i].bleu / stats[i].nb;
+        if (estRacine(&objets[i])) {
+            objets[i].pixel->rouge = stats[i].rouge / stats[i].nb;
+            objets[i].pixel->vert = stats[i].vert / stats[i].nb;
+            objets[i].pixel->bleu = stats[i].bleu / stats[i].nb;
         }
     }
 
     for (int i = 0; i < (width * height); i++) {
-        objets[i]->pixel->rouge = TrouverEnsemble(objets[i])->pixel->rouge;
-        objets[i]->pixel->vert = TrouverEnsemble(objets[i])->pixel->vert;
-        objets[i]->pixel->bleu = TrouverEnsemble(objets[i])->pixel->bleu;
+        objets[i].pixel->rouge = TrouverEnsemble(&objets[i])->pixel->rouge;
+        objets[i].pixel->vert = TrouverEnsemble(&objets[i])->pixel->vert;
+        objets[i].pixel->bleu = TrouverEnsemble(&objets[i])->pixel->bleu;
     }
 
     // Place le pixbuf à visualiser dans le bon widget.
@@ -487,23 +481,21 @@ void disk(GdkPixbuf *pixbuf, int r) {
     }
 }
 
-Objet **CreerEnsembles(GdkPixbuf *pixbuf) {
+Objet *CreerEnsembles(GdkPixbuf *pixbuf) {
     int width = gdk_pixbuf_get_width(pixbuf);
     int height = gdk_pixbuf_get_height(pixbuf);
-    Objet **res = malloc(sizeof(Objet) * (width * height));
+    Objet *res = malloc(width * height * sizeof(Objet));
 
     guchar *data = gdk_pixbuf_get_pixels(pixbuf); // Pointeur vers le tampon de données
     int rowstride = gdk_pixbuf_get_rowstride(pixbuf); // Nombre d'octets entre chaque ligne dans le tampon de données
 
     int i = 0;
-    for (int y = 0; y < height; ++y) {
+    for (int y = 0; y < height; y++) {
         Pixel *pixel = (Pixel *) data;
         for (int x = 0; x < width; ++x) {
-            Objet *objet = malloc(sizeof(Objet));
-            objet->pere = objet;
-            objet->pixel = pixel;
-            objet->rang = 0;
-            res[i] = objet;
+            res[i].pere = &res[i];
+            res[i].rang = 0;
+            res[i].pixel = pixel;
 
             i++;
             pixel++;
